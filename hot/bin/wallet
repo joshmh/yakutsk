@@ -1,0 +1,26 @@
+/*
+
+HD Wallet path structure:
+
+Under the master key, build a series of hardened keys, representing accounts.
+Under each account, build a series of hardened keys representing wallets.
+Under each wallet, create a two regular keys, internalKey and externalKey.
+
+Each wallet will use its internalKey and externalKey, collectively, genKeys, for generating new addresses.
+These addresses map to an integer i under the genKeys.
+
+The wallet is considered the owner of the genKeys, nobody else should generate new addresses
+under the genKeys.
+
+The wallet keeps a persistent record of the last used i for each of the two genKeys.
+
+When generating a new address:
+
+1. Increment the stored i value for the genKey.
+2. Build a Bitcoin address based on the i value.
+3. Check if this address has been seen on the blockchain.
+4. If not, return the address.
+5. If yes, increment i again until 4.
+6. Optionally do a branch and bound type thing. Set i = 2^k for increasing k, until
+   i isn't on blockchain, then do a binary search to find last i.
+*/
