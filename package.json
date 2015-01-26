@@ -23,6 +23,9 @@
   },
   "homepage": "https://github.com/joshmh/yakutsk",
   "dependencies": {
-    "bitcore-mnemonic": "^0.9.1"
+    "bitcore-mnemonic": "^0.9.1",
+    "inquirer": "^0.8.0",
+    "minimist": "^1.1.0",
+    "scrypt": "^3.0.1"
   }
 }
