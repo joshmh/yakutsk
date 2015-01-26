@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+
+'use strict';
+
+var M = require('bitcore-mnemonic');
+var m = new M();
+
+console.log(m.toString());
