@@ -4,7 +4,8 @@ HD Wallet path structure:
 
 Under the master key, build a series of hardened keys, representing accounts.
 Under each account, build a series of hardened keys representing wallets.
-Under each wallet, create two non-hardened keys, internalKey and externalKey.
+Under each wallet, create two non-hardened keys, internalKey and externalKey. 
+A wallet represents a single device, each device should have a different wallet that it alone owns.
 
 Each wallet will use its internalKey and externalKey, collectively, genKeys, for generating new addresses.
 These addresses map to an integer i under the genKeys.
