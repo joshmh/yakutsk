@@ -1,10 +1,12 @@
+#!/usr/bin/env node
+
 /*
 
 HD Wallet path structure:
 
 Under the master key, build a series of hardened keys, representing accounts.
 Under each account, build a series of hardened keys representing wallets.
-Under each wallet, create two non-hardened keys, internalKey and externalKey. 
+Under each wallet, create two non-hardened keys, internalKey and externalKey.
 A wallet represents a single device, each device should have a different wallet that it alone owns.
 
 Each wallet will use its internalKey and externalKey, collectively, genKeys, for generating new addresses.
@@ -24,4 +26,55 @@ When generating a new address:
 5. If yes, increment i again until 4.
 6. Optionally do a branch and bound type thing. Set i = 2^k for increasing k, until
    i isn't on blockchain, then do a binary search to find last i.
+
+Generate a new wallet file for k-of-n multisig with supplied master public keys:
+wallet -g k <mpk> <mpk> ...
+
+Master public keys should be hardened public key for this wallet (output of ``seed``)
+
+TODO:
+- save and load wallet file
+- output tx based on bitcoin address + amount, including fetching unspent txs
+- cold wallet: sign tx
 */
+
+var R = require('ramda')
+var argv = require('minimist')(process.argv.slice(2))
+
+var bitcoin = require('bitcoinjs-lib')
+
+var args = argv._
+
+function init () {
+  var m = parseInt(R.head(args), 10)
+  var masterPublicKeys = R.tail(args)
+
+  var rec = {
+    masterPublicKeys: masterPublicKeys,
+    m: m,
+    k: 1
+  }
+
+  console.log(JSON.stringify(rec, null, '  '))
+
+  var nextIndividualPubKeyWithK = R.partial(nextIndividualPubKey, rec.k)
+  var pubKeys = R.map(nextIndividualPubKeyWithK, masterPublicKeys)
+  console.log(generateMultisigAddress(rec.m, pubKeys))
+}
+
+function nextIndividualPubKey (k, mpk) {
+  var hdNode = bitcoin.HDNode.fromBase58(mpk)
+
+  // Use external branch for receiving addresses
+  return hdNode.derive(0).derive(k).pubKey
+}
+
+function generateMultisigAddress (m, pubKeys) {
+  var redeemScript = bitcoin.scripts.multisigOutput(m, pubKeys)
+  var scriptPubKey = bitcoin.scripts.scriptHashOutput(redeemScript.getHash())
+  var address = bitcoin.Address.fromOutputScript(scriptPubKey).toString()
+
+  return address
+}
+
+init()
