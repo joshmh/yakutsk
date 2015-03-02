@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+var fs = require('fs')
 var R = require('ramda')
 var colors = require('colors')
 var bitcoin = require('bitcoinjs-lib')
@@ -11,32 +12,43 @@ var networkName = argv.t ? 'testnet' : 'bitcoin'
 console.log('Generating keys for network: %s\n', colors.bold(networkName))
 var network = networks[networkName]
 
-var accounts = argv._
-if (accounts.length === 0) accounts = ['main']
+var wallets = argv._
+var dupeFactor = argv.d ? parseInt(argv.d, 10) : 1
+
+if (wallets.length === 0) wallets = ['main']
 
 /*
 
 TODO:
 
-- take duplication factor and accounts
-- if duplication factor is 2, this seed will account for 2 sigs in the script
+- use dotfile for settings
+- another script for duolingo style gamification of brainwallet
 
 */
 
-function pubkeyForAccount (account, k) {
-  var mnemonic = bip39.generateMnemonic()
-  if (k > 0) {
-    console.log(colors.gray('--------------------------------'))
-  }
-  console.log('Account: %s', colors.bold(account))
-  console.log(mnemonic)
-  var seed = bip39.mnemonicToSeed(mnemonic)
-  var hdNode = bitcoin.HDNode.fromSeedBuffer(seed, network)
-  console.log(hdNode.toString())   // DEBUG -- we shouldn't really print out private seeds
-  var publicNode = hdNode.deriveHardened(k).neutered()
-  console.log(colors.green('\nMaster public key:\n') + publicNode.toString())
+var mnemonic = bip39.generateMnemonic()
+console.log(mnemonic)
+
+var seed = bip39.mnemonicToSeed(mnemonic)
+var hdNode = bitcoin.HDNode.fromSeedBuffer(seed, network)
+
+console.log(hdNode.toString())   // DEBUG -- we shouldn't really print out private seeds, this is for testing signing
+
+function pubkeysForDupeIndex (walletK, dupeK) {
+  return hdNode.deriveHardened(dupeK).deriveHardened(walletK).neutered()
 }
 
-console.log('Master public keys for your accounts:')
+function pubkeysForWallet (wallet, k) {
+  var pubkeysForThisWallet = R.partial(pubkeysForDupeIndex, k)
+  var pubkeys = R.times(pubkeysForThisWallet, dupeFactor)
+  save(wallet, R.map(R.func('toString'), pubkeys))
+}
+
+function save (name, data) {
+  var path = name + '.json'
+  fs.writeFileSync(path, JSON.stringify(data))
+}
+
 console.log()
-R.forEachIndexed(pubkeyForAccount, accounts)
+R.forEachIndexed(pubkeysForWallet, wallets)
+console.log('Your wallets have been saved to disk.')

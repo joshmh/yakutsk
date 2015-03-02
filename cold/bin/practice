@@ -1,0 +1,70 @@
+var inquirer = require('inquirer')
+var chalk = require('chalk')
+var R = require('ramda')
+
+// Kind of a hack, but no good way to load this
+var wordlist = require('../../node_modules/bip39/wordlists/en.json')
+
+var mnemonic = 'nature curious put there affair tray bullet home muffin defy witness gossip'
+var list = mnemonic.split(' ')
+var placeholder = chalk.underline('     ')
+
+function randomWord () {
+  var choice = getRandomInt(0, wordlist.length)
+  return wordlist[choice]
+}
+
+function buildQuestion (name, m, hasSuffix, isMultipleChoice) {
+  var type, choices
+  var prefix = list.slice(0, m)
+  var suffix = list.slice(m + 1)
+  var effectiveSuffix = hasSuffix ? suffix : []
+  var message = prefix.concat(placeholder, effectiveSuffix).join(' ') + ':'
+  var correctWord = list[m]
+  var validate = function (input) {
+    if (input === correctWord) { return true }
+    return prefix.concat(chalk.bold.red(correctWord), suffix).join(' ')
+  }
+
+  // TODO: This doesn't currently work because inquirer skips validation on multiple choice
+  if (isMultipleChoice) {
+    type = 'list'
+    var insertionIndex = getRandomInt(0, 4)
+    choices = R.insert(insertionIndex, correctWord, R.times(randomWord, 4))
+  } else {
+    type = 'input'
+    choices = null
+  }
+
+  return {
+    name: name,
+    type: type,
+    choices: choices,
+    message: message,
+    validate: validate
+  }
+}
+
+function buildRandomQuestion () {
+  // TODO: re-enable multiple choice after fixing inquirer
+  return buildQuestion('null', getRandomInt(0, 12), getRandomBool(), false)
+}
+
+function getRandomInt (min, max) {
+  return Math.floor(Math.random() * (max - min)) + min
+}
+
+function getRandomBool () {
+  return getRandomInt(0, 2) === 1
+}
+
+function generateQuestions () {
+  var questions = R.times(buildRandomQuestion, 3)
+  console.log()
+  console.log(chalk.green('Fill in the blanks:'))
+  inquirer.prompt(questions, function (answers) {
+    console.log('done')
+  })
+}
+
+generateQuestions()

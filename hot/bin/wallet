@@ -40,14 +40,16 @@ wallet -g k <mpk> <mpk> ...
 Master public keys should be hardened public key for this wallet (output of ``seed``)
 
 TODO:
-- add dupe branches
-- might want to sort mpbs?
-- data transfer should probably be over null modem cable with leds
-- move selector.js to lib
+
+- data transfer using minimodem over audio cables
+- consider using raw multisig addresses (scripts.multisigOutput) for brainwallet setups:
+  - max public keys is 3, so:
+    - 1-of-2 with two brainwallets
+    - advantage is we don't need to store the public key/redeemScript of the second brainwallet
+- use regular pay-to-pubkey-hash for 1-of-1 brainwallet
 
 STATUS:
-Everything works but messy. Need to clean up, add dupes. ``seed`` generator needs
-to be cleaned up, too, it shouldn't set different k's for different seeds.
+Everything works but messy.
 
 */
 
@@ -59,7 +61,7 @@ var bitcoin = require('bitcoinjs-lib')
 var Api = require('cb-helloblock')
 
 var pp = require('../../lib/pp')
-var selector = require('./selector')
+var selector = require('../lib/selector')
 
 var args = argv._
 
@@ -73,7 +75,7 @@ console.log(networkName)
 
 function init () {
   var m = parseInt(R.head(args), 10)
-  var masterPublicKeys = R.tail(args)
+  var masterPublicKeys = R.tail(args).sort()
 
   var rec = {
     masterPublicKeys: masterPublicKeys,
@@ -97,8 +99,8 @@ function init () {
 
     sign(tx.transaction, redeemScript)
     var hex = tx.transaction.build().toHex()
-    console.log(hex)
-    api.transactions.propagate([hex], console.log)
+    console.log(hex.toUpperCase())
+//    api.transactions.propagate([hex], console.log)
     save('wallet.json', rec)
   })
 }
