@@ -14,6 +14,15 @@ var network = networks[networkName]
 var accounts = argv._
 if (accounts.length === 0) accounts = ['main']
 
+/*
+
+TODO:
+
+- take duplication factor and accounts
+- if duplication factor is 2, this seed will account for 2 sigs in the script
+
+*/
+
 function pubkeyForAccount (account, k) {
   var mnemonic = bip39.generateMnemonic()
   if (k > 0) {
@@ -23,7 +32,7 @@ function pubkeyForAccount (account, k) {
   console.log(mnemonic)
   var seed = bip39.mnemonicToSeed(mnemonic)
   var hdNode = bitcoin.HDNode.fromSeedBuffer(seed, network)
-  console.log(hdNode.toString())
+  console.log(hdNode.toString())   // DEBUG -- we shouldn't really print out private seeds
   var publicNode = hdNode.deriveHardened(k).neutered()
   console.log(colors.green('\nMaster public key:\n') + publicNode.toString())
 }

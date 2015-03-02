@@ -43,10 +43,10 @@ TODO:
 - add dupe branches
 - might want to sort mpbs?
 - data transfer should probably be over null modem cable with leds
+- move selector.js to lib
 
 STATUS:
-
-Everything worksm but messy. Need to clean up, add dupes. ``seed`` generator needs
+Everything works but messy. Need to clean up, add dupes. ``seed`` generator needs
 to be cleaned up, too, it shouldn't set different k's for different seeds.
 
 */
