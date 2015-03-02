@@ -4,10 +4,17 @@
 
 HD Wallet path structure:
 
+Dupe branches:
+Dupe branches are meant to generate multiple public keys in a multisig from a single
+seed. The idea is to allow more sophisticated sig structures than regular m-of-n. This
+becomes unnecessary once bitcoin 0.10 becomes widespread.
+
 Under the master key, build a series of hardened keys, representing accounts.
-Under each account, build a series of hardened keys representing wallets.
-Under each wallet, create two non-hardened keys, internalKey and externalKey.
-A wallet represents a single device, each device should have a different wallet that it alone owns.
+Under each account, create n dupe branches, where n is the number of times the given seed should
+be duplicated in the signature.
+Under each dupe branch, create two non-hardened keys, internalKey and externalKey.
+An account represents a single device, each device should have a different account that it alone owns.
+A device is whatever is keeping track of the state of a wallet, likely a tails flash drive.
 
 Each wallet will use its internalKey and externalKey, collectively, genKeys, for generating new addresses.
 These addresses map to an integer i under the genKeys.
@@ -33,17 +40,36 @@ wallet -g k <mpk> <mpk> ...
 Master public keys should be hardened public key for this wallet (output of ``seed``)
 
 TODO:
-- save and load wallet file
-- output tx based on bitcoin address + amount, including fetching unspent txs
-- cold wallet: sign tx
+- add dupe branches
+- might want to sort mpbs?
+- data transfer should probably be over null modem cable with leds
+
+STATUS:
+
+Everything worksm but messy. Need to clean up, add dupes. ``seed`` generator needs
+to be cleaned up, too, it shouldn't set different k's for different seeds.
+
 */
 
+var fs = require('fs')
 var R = require('ramda')
 var argv = require('minimist')(process.argv.slice(2))
 
 var bitcoin = require('bitcoinjs-lib')
+var Api = require('cb-helloblock')
+
+var pp = require('../../lib/pp')
+var selector = require('./selector')
 
 var args = argv._
+
+var networks = bitcoin.networks
+var networkName = argv.t ? 'testnet' : 'bitcoin'
+var network = networks[networkName]
+
+var api = new Api(networkName)
+
+console.log(networkName)
 
 function init () {
   var m = parseInt(R.head(args), 10)
@@ -52,29 +78,157 @@ function init () {
   var rec = {
     masterPublicKeys: masterPublicKeys,
     m: m,
-    k: 1
+    internalK: 0,
+    externalK: 1,
+    network: networkName
   }
 
   console.log(JSON.stringify(rec, null, '  '))
 
-  var nextIndividualPubKeyWithK = R.partial(nextIndividualPubKey, rec.k)
-  var pubKeys = R.map(nextIndividualPubKeyWithK, masterPublicKeys)
-  console.log(generateMultisigAddress(rec.m, pubKeys))
+  var addr = generateAddress(rec)
+  console.log(addr)
+  unspents([addr], function (err, utxos) {
+    var outputs = [{value: 250000, address: 'mh3oC4JjgEzhFWZrKadFrYWw54JGQr9rpz'}]
+    var selection = selector(utxos, outputs, network)
+    pp(selection)
+    var tx = generateSpendTx(rec, selection, outputs)
+    var redeemScript = generateRedeemScript(1, 1, masterPublicKeys)
+    pp(redeemScript)
+
+    sign(tx.transaction, redeemScript)
+    var hex = tx.transaction.build().toHex()
+    console.log(hex)
+    api.transactions.propagate([hex], console.log)
+    save('wallet.json', rec)
+  })
 }
 
-function nextIndividualPubKey (k, mpk) {
-  var hdNode = bitcoin.HDNode.fromBase58(mpk)
+function load (walletPath) {
+  return JSON.parse(fs.readFileSync(walletPath))
+}
+
+function save (walletPath, rec) {
+  fs.writeFileSync(walletPath, JSON.stringify(rec))
+}
+
+function nextIndividualPubKey (k, isChange, mpk) {
+  var hdNode = bitcoin.HDNode.fromBase58(mpk, network)
 
   // Use external branch for receiving addresses
+  if (isChange) {
+    return hdNode.derive(1).derive(k).pubKey
+  }
   return hdNode.derive(0).derive(k).pubKey
+}
+
+// This needs to be tailored to correct k, and internal or external (not to mention dupes)
+function generateRedeemScript (m, k, mpks) {
+  console.log('DEBUG10: %s', k)
+  var nextIndividualPubKeyWithK = R.partial(nextIndividualPubKey, k, false)
+  var pubKeys = R.map(nextIndividualPubKeyWithK, mpks)
+  console.log('DEBUG2')
+  console.log(m)
+  //pp(pubKeys)
+  return bitcoin.scripts.multisigOutput(m, pubKeys)
 }
 
 function generateMultisigAddress (m, pubKeys) {
   var redeemScript = bitcoin.scripts.multisigOutput(m, pubKeys)
+  console.log('DEBUG1')
+  console.log(m)
+  //pp(pubKeys)
+  pp(redeemScript)
   var scriptPubKey = bitcoin.scripts.scriptHashOutput(redeemScript.getHash())
-  var address = bitcoin.Address.fromOutputScript(scriptPubKey).toString()
+  var address = bitcoin.Address.fromOutputScript(scriptPubKey, network).toString()
 
   return address
+}
+
+function generateAddress (rec) {
+  console.log('DEBUG13')
+  console.log('DEBUG11: %s', rec.externalK)
+  var nextIndividualPubKeyWithK = R.partial(nextIndividualPubKey, rec.externalK++, false)
+  var pubKeys = R.map(nextIndividualPubKeyWithK, rec.masterPublicKeys)
+  return generateMultisigAddress(rec.m, pubKeys)
+}
+
+function generateChangeAddress (rec) {
+  console.log('DEBUG12')
+  var nextIndividualPubKeyWithK = R.partial(nextIndividualPubKey, rec.internalK++, true)
+  var pubKeys = R.map(nextIndividualPubKeyWithK, rec.masterPublicKeys)
+  return generateMultisigAddress(rec.m, pubKeys)
+}
+
+// Adapted from https://github.com/dcousens/bip32-wallet/blob/master/src/index.js#L44
+function generateSpendTx (rec, selection, outputs) {
+  var inputs = selection.inputs
+
+  // sanity check (until things are battle tested)
+  var totalInputValue = inputs.reduce(function (a, x) { return a + x.value }, 0)
+  var totalOutputValue = outputs.reduce(function (a, x) { return a + x.value }, 0)
+
+  if (totalInputValue - totalOutputValue !== selection.change + selection.fee) {
+    throw new Error('Error with transaction creation algorithm')
+  }
+
+  if (selection.fee > 0.1 * 1e8) {
+    throw new Error('Very high fee: ' + selection.fee)
+  }
+
+  // build transaction
+  var txb = new bitcoin.TransactionBuilder()
+
+  inputs.forEach(function (input) {
+    txb.addInput(input.txId, input.vout)
+  })
+
+  outputs.forEach(function (output) {
+    txb.addOutput(output.address, output.value)
+  })
+
+  var change, fee
+
+  // is the change worth it?
+  if (selection.change > network.dustThreshold) {
+    var changeAddress = generateChangeAddress(rec)
+
+    txb.addOutput(changeAddress, selection.change)
+
+    change = selection.change
+    fee = selection.fee
+  } else {
+    change = 0
+    fee = selection.change + selection.fee
+  }
+
+  return {
+    fee: fee,
+    change: change,
+    transaction: txb
+  }
+}
+
+// This goes in the cold wallet
+function sign (tx, redeemScript) {
+  var masterPrivateKeys = [
+    'tprv8ZgxMBicQKsPdi3iLyz7NbLcqL9KQrRJvKo7KCfmcd2z7VLhrYWpkZ6YY1e3S8jrQ35JcoE8xvpWLdZ5xf88BtGXbr5XTiJ9sasirrvqL8Y',
+    'tprv8ZgxMBicQKsPfQQxbGg3SceUgko3ZyM2Ej2mhTamqpDi2pWZGUfLXpLNX9UzHoi6NuuTdWtUDiw6i9EiQkzshgDGwH72XPLup37mKpmFizV'
+  ]
+
+  var privNode = bitcoin.HDNode.fromBase58(masterPrivateKeys[0], network)
+  tx.sign(0, privNode.deriveHardened(0).derive(0).derive(1).privKey, redeemScript)
+}
+
+function unspents (addresses, cb) {
+/*
+  return cb(null, [ { txId: '9f99d6bb43b755306921b7835ab791deca67fd8f56f3073d92ee7cbee00e113a',
+    address: '2N5A8pu2qa9LA5LB349wdFb6mPoZxizr6SK',
+    confirmations: 738,
+    value: 100000,
+    vout: 1 } ])
+*/
+  console.log(addresses)
+  api.addresses.unspents(addresses, cb)
 }
 
 init()

@@ -1,39 +1,33 @@
 #!/usr/bin/env node
 
-var crypto = require('crypto')
 var R = require('ramda')
+var colors = require('colors')
 var bitcoin = require('bitcoinjs-lib')
 var bip39 = require('bip39')
 var argv = require('minimist')(process.argv.slice(2))
 
-var xor = require('../../lib/xor')
-
-// ``n`` is the number of individual keys we want
-var n = parseInt(argv.n || 1, 10)
+var networks = bitcoin.networks
+var networkName = argv.t ? 'testnet' : 'bitcoin'
+console.log('Generating keys for network: %s\n', colors.bold(networkName))
+var network = networks[networkName]
 
 var accounts = argv._
 if (accounts.length === 0) accounts = ['main']
 
-function randomHexSeed () {
-  return crypto.randomBytes(16)
-}
-
-function printSeed (seed) {
-  console.log(bip39.entropyToMnemonic(seed.toString('hex')))
-}
-
-function printMPK (hdNode, account, k) {
+function pubkeyForAccount (account, k) {
+  var mnemonic = bip39.generateMnemonic()
+  if (k > 0) {
+    console.log(colors.gray('--------------------------------'))
+  }
+  console.log('Account: %s', colors.bold(account))
+  console.log(mnemonic)
+  var seed = bip39.mnemonicToSeed(mnemonic)
+  var hdNode = bitcoin.HDNode.fromSeedBuffer(seed, network)
+  console.log(hdNode.toString())
   var publicNode = hdNode.deriveHardened(k).neutered()
-  console.log(account + ': ' + publicNode.toString())
+  console.log(colors.green('\nMaster public key:\n') + publicNode.toString())
 }
 
-var seeds = R.times(randomHexSeed, n)
-var combinedSeed = xor(seeds)
-
-console.log('Individual keys:')
-R.forEach(printSeed, seeds)
-console.log()
-
-var hdNode = bitcoin.HDNode.fromSeedBuffer(combinedSeed)
 console.log('Master public keys for your accounts:')
-R.forEachIndexed(R.partial(printMPK, hdNode), accounts)
+console.log()
+R.forEachIndexed(pubkeyForAccount, accounts)

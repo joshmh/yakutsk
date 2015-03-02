@@ -31,3 +31,4 @@ node_modules
 *.sublime-project
 
 scratch
+wallet.json
