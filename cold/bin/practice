@@ -9,6 +9,30 @@ var mnemonic = 'nature curious put there affair tray bullet home muffin defy wit
 var list = mnemonic.split(' ')
 var placeholder = chalk.underline('     ')
 
+/*
+
+TODO:
+
+- use readling instead of inquirer, select a number from a list for multiple choice
+- see test.js
+
+var readline = require('readline')
+
+var rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+})
+
+rl.question('What do you think of node.js? ', function (answer) {
+  // TODO: Log the answer in a database
+  console.log('Thank you for your valuable feedback:', answer)
+  console.log('\u001B[2J\u001B[0;0f')
+  rl.close()
+})
+
+
+*/
+
 function randomWord () {
   var choice = getRandomInt(0, wordlist.length)
   return wordlist[choice]
