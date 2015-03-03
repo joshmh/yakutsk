@@ -1,6 +1,9 @@
-var inquirer = require('inquirer')
+var readline = require('readline')
 var chalk = require('chalk')
 var R = require('ramda')
+
+/*global Promise:true*/
+var Promise = require('bluebird')
 
 // Kind of a hack, but no good way to load this
 var wordlist = require('../../node_modules/bip39/wordlists/en.json')
@@ -8,6 +11,11 @@ var wordlist = require('../../node_modules/bip39/wordlists/en.json')
 var mnemonic = 'nature curious put there affair tray bullet home muffin defy witness gossip'
 var list = mnemonic.split(' ')
 var placeholder = chalk.underline('     ')
+
+var rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+})
 
 /*
 
@@ -30,7 +38,6 @@ rl.question('What do you think of node.js? ', function (answer) {
   rl.close()
 })
 
-
 */
 
 function randomWord () {
@@ -39,25 +46,34 @@ function randomWord () {
 }
 
 function buildQuestion (name, m, hasSuffix, isMultipleChoice) {
-  var type, choices
+  var type, choices, answer
   var prefix = list.slice(0, m)
   var suffix = list.slice(m + 1)
   var effectiveSuffix = hasSuffix ? suffix : []
-  var message = prefix.concat(placeholder, effectiveSuffix).join(' ') + ':'
+  var message = prefix.concat(placeholder, effectiveSuffix).join(' ')
   var correctWord = list[m]
-  var validate = function (input) {
-    if (input === correctWord) { return true }
-    return prefix.concat(chalk.bold.red(correctWord), suffix).join(' ')
-  }
 
-  // TODO: This doesn't currently work because inquirer skips validation on multiple choice
   if (isMultipleChoice) {
     type = 'list'
     var insertionIndex = getRandomInt(0, 4)
     choices = R.insert(insertionIndex, correctWord, R.times(randomWord, 4))
+    answer = insertionIndex + 1
   } else {
     type = 'input'
     choices = null
+    answer = correctWord
+  }
+
+  var validate = function (input) {
+    var strippedInput = input.trim()
+    if (type === 'input') {
+      if (strippedInput === correctWord) { return true }
+      return prefix.concat(chalk.bold.red(correctWord), suffix).join(' ')
+    }
+
+    if (strippedInput - 1 === insertionIndex) { return true }
+
+    return prefix.concat(chalk.bold.red(correctWord), suffix).join(' ')
   }
 
   return {
@@ -65,13 +81,13 @@ function buildQuestion (name, m, hasSuffix, isMultipleChoice) {
     type: type,
     choices: choices,
     message: message,
-    validate: validate
+    validate: validate,
+    answer: answer
   }
 }
 
 function buildRandomQuestion () {
-  // TODO: re-enable multiple choice after fixing inquirer
-  return buildQuestion('null', getRandomInt(0, 12), getRandomBool(), false)
+  return buildQuestion('null', getRandomInt(0, 12), getRandomBool(), getRandomBool())
 }
 
 function getRandomInt (min, max) {
@@ -82,12 +98,58 @@ function getRandomBool () {
   return getRandomInt(0, 2) === 1
 }
 
-function generateQuestions () {
-  var questions = R.times(buildRandomQuestion, 3)
+function printChoice (choice, i) {
+  var displayNum = (i + 1).toString()
+  console.log(chalk.yellow(displayNum + ') ') + choice)
+}
+
+function printQuestion (question) {
+  console.log('\u001B[2J\u001B[0;0f')
+  console.log(question.message)
   console.log()
-  console.log(chalk.green('Fill in the blanks:'))
-  inquirer.prompt(questions, function (answers) {
-    console.log('done')
+
+  if (question.type === 'list') {
+    question.choices.map(printChoice)
+    console.log()
+    rl.setPrompt(chalk.yellow.bold('Choose the correct answer: '), 27)
+  } else {
+    rl.setPrompt(chalk.yellow.bold('Type the missing word: '), 23)
+  }
+  rl.prompt()
+}
+
+function handleAnswer (answer, question) {
+  console.log()
+  var err = question.validate(answer)
+  if (err === true) {
+    console.log(chalk.green.bold('Correct!'))
+  } else {
+    console.log(chalk.red.bold('Nope.') + chalk.red(' Correct answer is: %s'), question.answer)
+    console.log()
+    console.log(err)
+  }
+  console.log()
+  rl.write('Press <enter> to continue.')
+  readline.moveCursor(rl, 1000, 0)
+}
+
+function generateQuestions () {
+  var question = buildRandomQuestion()
+  var answerStage = true
+
+  rl.setPrompt('', 0)
+
+  printQuestion(question)
+
+  rl.on('line', function (line) {
+    if (answerStage) {
+      handleAnswer(line, question)
+      answerStage = false
+      return
+    }
+    question = buildRandomQuestion()
+    printQuestion(question)
+    answerStage = true
   })
 }
 
