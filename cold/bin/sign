@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+
+var fs = require('fs')
+var cp = require('child_process')
+var bitcoin = require('bitcoinjs-lib')
+
+var viewer = process.platform === 'darwin' ? 'open' : 'eog'
+
+// TODO: base43 and protocol buffers ftw
+
+function parseQr (qrText) {
+  // TODO: Could use base43 instead of hex for efficiency
+  // Could use protocol buffers instead of JSON for even more efficiency
+  var buf = new Buffer(qrText, 'hex')
+  var rec = JSON.parse(buf)
+  rec.tx = parseTx(rec.tx)
+}
+
+function parseTx (str) {
+  var tx = bitcoin.Transaction.fromHex(str)
+  return bitcoin.TransactionBuilder.fromTransaction(tx)
+}
+
+function captureQr (cb) {
+  // Use zbarcam
+}
+
+function nextIndividualPubKey (k, isChange, mpk) {
+  var hdNode = bitcoin.HDNode.fromBase58(mpk, network)
+
+  // Use external branch for receiving addresses
+  if (isChange) {
+    return hdNode.derive(1).derive(k).pubKey
+  }
+  return hdNode.derive(0).derive(k).pubKey
+}
+
+// This needs to be tailored to correct k, and internal or external (not to mention dupes)
+function generateRedeemScript (m, k, mpks) {
+  console.log('DEBUG10: %s', k)
+  var nextIndividualPubKeyWithK = R.partial(nextIndividualPubKey, k, false)
+  var pubKeys = R.map(nextIndividualPubKeyWithK, mpks)
+  console.log('DEBUG2')
+  console.log(m)
+  //pp(pubKeys)
+  return bitcoin.scripts.multisigOutput(m, pubKeys)
+}
+
+function sign (rec) {
+  // TODO: get master private key
+
+  /*
+
+  The main question for this tool is what info are we provided with from the hot wallet.
+  Possibilities:
+  (1) Custom record just for us with everything we need:
+    - tx with redeemscript baked in
+    - number of dupes
+    - isChange
+    - wallet index
+    - node index
+
+  (2) Same record for everyone, including all of above except dupes count for all private keys
+  (3) Make us build the redeemScript, just supply all mpks and we have to figure out everything else
+    possibly by discovery
+
+    We probably want to start with the easiest (1) but eventually do (3) because we'll be able to
+    spend while keeping less info around.
+
+  */
+
+  // TODO: need to find correct child private key for this: wallet, dupes, internal/external, index
+  // Need to sign for all dupes, but we need to know how many there are
+  // We can figure this out by starting with 0, and seeing which pubkeys are in the sig
+  // We can check internal/external by checking the parentId of the public key
+  // We can get the index from the public key
+  var privNode = bitcoin.HDNode.fromBase58(masterPrivateKey, network)
+  var index = rec.i
+  var redeemScript = rec.script
+  var tx = rec.tx
+
+  var privkey = privNode.deriveHardened(0).derive(0).derive(1).privKey
+  tx.sign(index, privkey, redeemScript)
+
+  // TODO: change to protocol buffers
+  return tx.buildIncomplete().toHex()
+}
+
+function showQrCode (str) {
+  cp.exec('qrencode -s6 ' + pubkey + ' -o /tmp/qr.png && ' + viewer + ' /tmp/qr.png', function (err) {
+    if (err) console.log(err)
+  })
+}
+
+captureQr(function (err, res) {
+  if (err) {
+    console.log(err)
+    process.exit(1)
+  }
+
+  var rec = parseQr(res)
+  var out = sign(rec)
+  showQrCode(out)
+})
