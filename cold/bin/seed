@@ -22,11 +22,11 @@ if (wallets.length === 0) wallets = ['main']
 TODO:
 
 - use dotfile for settings
-- another script for duolingo style gamification of brainwallet
 
 */
 
 var mnemonic = bip39.generateMnemonic()
+fs.writeFileSync('/tmp/mnemonic', mnemonic)
 console.log(mnemonic)
 
 var seed = bip39.mnemonicToSeed(mnemonic)

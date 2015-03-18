@@ -1,14 +1,28 @@
+#!/usr/bin/env node
+var fs = require('fs')
 var readline = require('readline')
 var chalk = require('chalk')
 var R = require('ramda')
 
-/*global Promise:true*/
-var Promise = require('bluebird')
+var GRACE_PERIOD = 5
 
 // Kind of a hack, but no good way to load this
 var wordlist = require('../../node_modules/bip39/wordlists/en.json')
+var mnemonic
 
-var mnemonic = 'nature curious put there affair tray bullet home muffin defy witness gossip'
+var stats = {
+  correct: 0,
+  incorrect: 0
+}
+
+try {
+  mnemonic = fs.readFileSync('/tmp/mnemonic').toString().trim()
+} catch (ex) {
+  console.log(ex)
+  console.log(chalk.red.bold('Error:') + ' please run ' + chalk.bold('seed') + ' first')
+  process.exit(1)
+}
+
 var list = mnemonic.split(' ')
 var placeholder = chalk.underline('     ')
 
@@ -16,29 +30,6 @@ var rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
 })
-
-/*
-
-TODO:
-
-- use readling instead of inquirer, select a number from a list for multiple choice
-- see test.js
-
-var readline = require('readline')
-
-var rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-})
-
-rl.question('What do you think of node.js? ', function (answer) {
-  // TODO: Log the answer in a database
-  console.log('Thank you for your valuable feedback:', answer)
-  console.log('\u001B[2J\u001B[0;0f')
-  rl.close()
-})
-
-*/
 
 function randomWord () {
   var choice = getRandomInt(0, wordlist.length)
@@ -87,7 +78,8 @@ function buildQuestion (name, m, hasSuffix, isMultipleChoice) {
 }
 
 function buildRandomQuestion () {
-  return buildQuestion('null', getRandomInt(0, 12), getRandomBool(), getRandomBool())
+  var multipleChoice = stats.correct < GRACE_PERIOD ? true : getRandomBool()
+  return buildQuestion('null', getRandomInt(0, 12), getRandomBool(), multipleChoice)
 }
 
 function getRandomInt (min, max) {
@@ -122,9 +114,11 @@ function handleAnswer (answer, question) {
   console.log()
   var err = question.validate(answer)
   if (err === true) {
+    stats.correct++
     console.log(chalk.green.bold('Correct!'))
   } else {
-    console.log(chalk.red.bold('Nope.') + chalk.red(' Correct answer is: %s'), question.answer)
+    stats.incorrect++
+    console.log(chalk.red.bold('Nope.'))
     console.log()
     console.log(err)
   }
@@ -152,5 +146,12 @@ function generateQuestions () {
     answerStage = true
   })
 }
+
+process.on('exit', function () {
+  var total = stats.correct + stats.incorrect
+  var score = chalk.bold.green((100 * stats.correct / total).toFixed(0))
+  console.log('\u001B[2J\u001B[0;0f')
+  console.log('\nYou answered %d questions. Your score is: %s', total, score)
+})
 
 generateQuestions()
