@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+
+var fs = require('fs')
+var cp = require('child_process')
+var R = require('ramda')
+var walletName = process.argv[2]
+
+function showQrCode (pubkey) {
+  cp.exec('qrencode -s6 ' + pubkey + ' -o /tmp/qr.png && open /tmp/qr.png', function (err) {
+    if (err) console.log(err)
+  })
+}
+
+var wallets = JSON.parse(fs.readFileSync('/tmp/wallets.json'))
+var wallet = wallets.length === 1 && !walletName ?
+  wallets[0] :
+  R.find(R.propEq('wallet', walletName), wallets)
+
+if (!wallet) {
+  if (!walletName) {
+    console.log('You must supply a wallet name')
+  } else {
+    console.log('No such wallet: %s', walletName)
+  }
+  process.exit(1)
+}
+showQrCode(wallet.pubkey)

@@ -1,29 +1,26 @@
 #!/usr/bin/env node
 
 var fs = require('fs')
-var R = require('ramda')
-var colors = require('colors')
+var chalk = require('chalk')
 var bitcoin = require('bitcoinjs-lib')
 var bip39 = require('bip39')
 var argv = require('minimist')(process.argv.slice(2))
 
 var networks = bitcoin.networks
 var networkName = argv.t ? 'testnet' : 'bitcoin'
-console.log('Generating keys for network: %s\n', colors.bold(networkName))
+
+if (argv.h) {
+  console.log('Usage: seed [wallet name] [wallet name] ...')
+  process.exit(0)
+}
+
+console.log()
+console.log('Generating keys for network: %s\n', chalk.bold(networkName))
 var network = networks[networkName]
 
 var wallets = argv._
-var dupeFactor = argv.d ? parseInt(argv.d, 10) : 1
 
 if (wallets.length === 0) wallets = ['main']
-
-/*
-
-TODO:
-
-- use dotfile for settings
-
-*/
 
 var mnemonic = bip39.generateMnemonic()
 fs.writeFileSync('/tmp/mnemonic', mnemonic)
@@ -34,21 +31,12 @@ var hdNode = bitcoin.HDNode.fromSeedBuffer(seed, network)
 
 console.log(hdNode.toString())   // DEBUG -- we shouldn't really print out private seeds, this is for testing signing
 
-function pubkeysForDupeIndex (walletK, dupeK) {
-  return hdNode.deriveHardened(dupeK).deriveHardened(walletK).neutered()
+function walletRec (wallet, k) {
+  return {wallet: wallet, pubkey: hdNode.deriveHardened(k).neutered().toString()}
 }
 
-function pubkeysForWallet (wallet, k) {
-  var pubkeysForThisWallet = R.partial(pubkeysForDupeIndex, k)
-  var pubkeys = R.times(pubkeysForThisWallet, dupeFactor)
-  save(wallet, R.map(R.func('toString'), pubkeys))
-}
-
-function save (name, data) {
-  var path = name + '.json'
-  fs.writeFileSync(path, JSON.stringify(data))
-}
-
+var walletRec = wallets.map(walletRec)
+fs.writeFileSync('/tmp/wallets.json', JSON.stringify(walletRec))
 console.log()
-R.forEachIndexed(pubkeysForWallet, wallets)
 console.log('Your wallets have been saved to disk.')
+console.log('Use %s to display QR code for copying public key.', chalk.bold('qr <wallet name>'))
