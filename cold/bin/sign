@@ -52,6 +52,16 @@ function sign (rec) {
   /*
 
   The main question for this tool is what info are we provided with from the hot wallet.
+
+  We start by fetching utxos to spend. This gives us a list of one of more addresses.
+  We now have to divine the list of pubkeys, and the m associated with each address.
+  We do this via lookup table that is populated when generating a receive address
+  and when generating change addresses while spending.
+
+  Hot device wallet stores: walletIndex, mpks, dupe counts (static per wallet),
+  and isChange, k (per address). Hot wallet provides all this info via QR and satisfies
+  (1) below. Just need to implement this.
+
   Possibilities:
   (1) Custom record just for us with everything we need:
     - tx with redeemscript baked in
@@ -67,6 +77,7 @@ function sign (rec) {
     We probably want to start with the easiest (1) but eventually do (3) because we'll be able to
     spend while keeping less info around.
 
+    Also, we need another tool to recover brain wallet if we forget a word.
   */
 
   // TODO: need to find correct child private key for this: wallet, dupes, internal/external, index
